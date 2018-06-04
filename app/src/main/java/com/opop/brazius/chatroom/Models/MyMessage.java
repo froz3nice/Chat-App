@@ -6,10 +6,10 @@ package com.opop.brazius.chatroom.Models;
 
 public class MyMessage {
     String message;
-    User sender;
-    long createdAt;
+    Users sender;
+    String createdAt;
 
-    public MyMessage(String message, User sender, long createdAt) {
+    public MyMessage(String message, Users sender, String createdAt) {
         this.message = message;
         this.sender = sender;
         this.createdAt = createdAt;
@@ -23,19 +23,19 @@ public class MyMessage {
         this.message = message;
     }
 
-    public User getSender() {
+    public Users getSender() {
         return sender;
     }
 
-    public void setSender(User sender) {
+    public void setSender(Users sender) {
         this.sender = sender;
     }
 
-    public long getCreatedAt() {
+    public String getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(long createdAt) {
-        this.createdAt = createdAt;
+    public String setCreatedAt(String createdAt) {
+       return this.createdAt = createdAt;
     }
 }

@@ -1,35 +1,65 @@
 package com.opop.brazius.chatroom;
 
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
+import android.arch.persistence.room.Room;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Binder;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
-import android.support.annotation.Nullable;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.app.TaskStackBuilder;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.opop.brazius.chatroom.Activities.ChatActivity;
+import com.opop.brazius.chatroom.Activities.FirstActivity;
+import com.opop.brazius.chatroom.Models.MessagesDBModel;
+import com.opop.brazius.chatroom.Models.Users;
+
 import org.jivesoftware.smack.AbstractXMPPConnection;
 import org.jivesoftware.smack.ConnectionConfiguration;
 import org.jivesoftware.smack.ConnectionListener;
+import org.jivesoftware.smack.PacketListener;
 import org.jivesoftware.smack.ReconnectionManager;
 import org.jivesoftware.smack.SASLAuthentication;
 import org.jivesoftware.smack.SmackException;
 import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.XMPPException;
+import org.jivesoftware.smack.chat.Chat;
+import org.jivesoftware.smack.chat.ChatManager;
+import org.jivesoftware.smack.chat.ChatManagerListener;
+import org.jivesoftware.smack.chat.ChatMessageListener;
+import org.jivesoftware.smack.filter.MessageTypeFilter;
+import org.jivesoftware.smack.filter.PacketFilter;
+import org.jivesoftware.smack.filter.StanzaFilter;
+import org.jivesoftware.smack.packet.Message;
+import org.jivesoftware.smack.packet.Presence;
+import org.jivesoftware.smack.packet.Stanza;
 import org.jivesoftware.smack.tcp.XMPPTCPConnection;
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration;
+import org.jivesoftware.smackx.disco.ServiceDiscoveryManager;
+import org.jivesoftware.smackx.disco.packet.DiscoverInfo;
 import org.jivesoftware.smackx.iqregister.AccountManager;
+import org.jivesoftware.smackx.offline.OfflineMessageManager;
 import org.jivesoftware.smackx.ping.PingFailedListener;
 import org.jivesoftware.smackx.ping.PingManager;
 import org.jivesoftware.smackx.ping.android.ServerPingWithAlarmManager;
+import org.jivesoftware.smackx.xdata.Form;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -38,11 +68,21 @@ import java.util.Map;
 
 public class XmppService extends Service implements ConnectionListener {
 
+    private static final String DATABASE_NAME = "messages_db2";
+    private MessageDatabase database;
+    private static final String CHANNEL_ID = "notific";
+
     AbstractXMPPConnection connection;
     private ConnectionInterface callback;
+    private IUpdateRecyclerView updateCallback;
+
     private boolean connected;
     private boolean loggedin;
+    private final int notificationId = 420;
+
     private SharedPreferences prefs;
+    private boolean isListenerRegistered = false;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -52,6 +92,9 @@ public class XmppService extends Service implements ConnectionListener {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        database = Room.databaseBuilder(this,
+                MessageDatabase.class, DATABASE_NAME)
+                .build();
         return START_STICKY;
     }
 
@@ -60,6 +103,46 @@ public class XmppService extends Service implements ConnectionListener {
         Log.d("sevice", "bound");
         LocalBinder mBinder = new LocalBinder(this);
         return mBinder;
+    }
+
+    public void createNotification(String body, String notMyUsername) {
+        int notifyID = 1;
+        CharSequence name = getString(R.string.channel_name);// The user-visible name of the channel.
+        NotificationChannel mChannel = null;
+        NotificationManager mNotificationManager =
+                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            mChannel = new NotificationChannel(CHANNEL_ID, name, importance);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
+                    "Channel",
+                    NotificationManager.IMPORTANCE_DEFAULT);
+            if (mNotificationManager != null) {
+                mNotificationManager.createNotificationChannel(channel);
+            }
+        }
+        NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(notMyUsername)
+                .setContentText(body);
+
+        TaskStackBuilder stackBuilder = TaskStackBuilder.create(this);
+        Intent intent = new Intent(this, ChatActivity.class);
+        Bundle bundle = new Bundle();
+        bundle.putString("name", notMyUsername);
+        intent.putExtras(bundle);
+        stackBuilder.addNextIntent(intent);
+        PendingIntent resultPendingIntent = stackBuilder.getPendingIntent(
+                0,
+                PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        mBuilder.setContentIntent(resultPendingIntent);
+        Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        mBuilder.setSound(alarmSound);
+
+        if (mNotificationManager != null) {
+            mNotificationManager.notify(notificationId, mBuilder.build());
+        }
     }
 
     public class LocalBinder extends Binder {
@@ -88,13 +171,8 @@ public class XmppService extends Service implements ConnectionListener {
         new LoginToXmppServer().execute(myTaskParams);
     }
 
-    public void disconnect() {
-        if (connection.isConnected()) {
-            connection.disconnect();
-            prefs.edit().putBoolean("isAuthed",false).apply();
-        } else {
-            Toast.makeText(getApplicationContext(), "not connected", Toast.LENGTH_LONG).show();
-        }
+    public void registerViewUpdater(AppCompatActivity activity){
+        updateCallback = (IUpdateRecyclerView) activity;
     }
 
     public void registerClient(AppCompatActivity activity) {
@@ -107,11 +185,16 @@ public class XmppService extends Service implements ConnectionListener {
 
         @Override
         protected Void doInBackground(String... strings) {
+            if (android.os.Debug.isDebuggerConnected())
+                android.os.Debug.waitForDebugger();
+            boolean connected = false;
             try {
                 connect();
+                connected = true;
             } catch (XMPPException | SmackException | IOException e) {
                 e.printStackTrace();
                 callback.onConnectionExcepion();
+                connected = false;
             }
             try {
                 AccountManager accountManager = AccountManager.getInstance(connection);
@@ -124,15 +207,20 @@ public class XmppService extends Service implements ConnectionListener {
                 SASLAuthentication.unBlacklistSASLMechanism("PLAIN");
                 SASLAuthentication.blacklistSASLMechanism("DIGEST-MD5");
                 connection.login(strings[0], strings[1]);
-                prefs.edit().putString("user",strings[0]).apply();
-                prefs.edit().putString("pw",strings[1]).apply();
+                prefs.edit().putString("user", strings[0]).apply();
+                prefs.edit().putString("pw", strings[1]).apply();
                 ReconnectionManager reconnectionManager = ReconnectionManager.getInstanceFor(connection);
                 reconnectionManager.enableAutomaticReconnection();
                 ReconnectionManager.setEnabledPerDefault(true);
+                String currentUsername = connection.getUser().split("@")[0];
+
+                database.daoAccess().insertUser(new Users(strings[0], currentUsername));
                 callback.onLoggedIn();
             } catch (XMPPException | SmackException | IOException e) {
                 e.printStackTrace();
-                callback.onLoginException();
+                if (connected) {
+                    callback.onRegisterException();
+                }
             }
             return null;
         }
@@ -149,6 +237,11 @@ public class XmppService extends Service implements ConnectionListener {
         }
     }
 
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        Log.d("SERVICE STOP","sERVICE STOP");
+    }
 
     class LoginToXmppServer extends AsyncTask<String, Void, Void> {
 
@@ -166,12 +259,28 @@ public class XmppService extends Service implements ConnectionListener {
                 SASLAuthentication.unBlacklistSASLMechanism("PLAIN");
                 SASLAuthentication.blacklistSASLMechanism("DIGEST-MD5");
                 connection.login(strings[0], strings[1]);
-                prefs.edit().putString("user",strings[0]).apply();
-                prefs.edit().putString("pw",strings[1]).apply();
+                ServiceDiscoveryManager sdm= ServiceDiscoveryManager.getInstanceFor(connection);
+
+                Presence presence123 = new Presence(Presence.Type.available);
+                presence123.setStatus("Available");
+                try {
+                    connection.sendStanza(presence123);
+                } catch (SmackException.NotConnectedException e) {
+                    e.printStackTrace();
+                }
+
+                prefs.edit().putString("user", strings[0]).apply();
+                prefs.edit().putString("pw", strings[1]).apply();
                 ReconnectionManager reconnectionManager = ReconnectionManager.getInstanceFor(connection);
                 reconnectionManager.enableAutomaticReconnection();
                 ReconnectionManager.setEnabledPerDefault(true);
                 callback.onLoggedIn();
+
+                if (database.daoAccess().getUserName(strings[0], strings[0]) == null
+                        || database.daoAccess().getUserName(strings[0], strings[0]).equals("")) {
+                    database.daoAccess().insertUser(new Users(strings[0], strings[0]));
+                }
+
             } catch (XMPPException | IOException | SmackException e) {
                 e.printStackTrace();
                 callback.onLoginException();
@@ -187,8 +296,56 @@ public class XmppService extends Service implements ConnectionListener {
         @Override
         protected void onPostExecute(Void result) {
             super.onPostExecute(result);
-            Log.i(TAG, "Connecting to xmpp server finished...");
+            if(getConnection().isConnected()){
+                registerMessageReceiver();
+            }
         }
+    }
+
+    private void registerMessageReceiver(){
+        if (!isListenerRegistered) {
+
+            ChatManager.getInstanceFor(getConnection()).addChatListener(new ChatManagerListener() {
+                @Override
+                public void chatCreated(Chat chat, boolean createdLocally) {
+                    //isListenerRegistered = true;
+                    chat.addMessageListener(new ChatMessageListener() {
+                        @Override
+                        public void processMessage(Chat chat, Message message) {
+
+                            if (message.getType() == Message.Type.chat && message.getBodies().size() != 0) {
+                                //createToast(message.getBody());
+                                String myUsername = getConnection().getUser().split("@")[0];
+                                String notMyUsername = message.getFrom().split("@")[0];
+                                insertMessage(message.getBody(), Utils.getCurrentTime(), false, myUsername, notMyUsername);
+                                Log.d("MESSAGE: ",message.getBody()+"   "+notMyUsername);
+                                createNotification(message.getBody(),notMyUsername);
+                                if(updateCallback != null) {
+                                    updateCallback.updateRecyclerView(message.getBody(), false, myUsername, notMyUsername);
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    private void insertMessage(final String message, final String time,
+                               final boolean isSender, final String myUserName, final String notMyUsername) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                MessagesDBModel messageObj = new MessagesDBModel();
+                messageObj.setContent(message);
+                messageObj.setTime(time);
+                messageObj.setSender(isSender);
+                messageObj.setMyUsername(myUserName);
+                messageObj.setNotMyUsername(notMyUsername);
+
+                database.daoAccess().insertOnlySingleMessage(messageObj);
+            }
+        }).start();
     }
 
     private void connect() throws IOException, XMPPException, SmackException {
@@ -199,13 +356,14 @@ public class XmppService extends Service implements ConnectionListener {
                         .setSecurityMode(ConnectionConfiguration.SecurityMode.disabled)
                         .setPort(5222)          // Your Port for accepting c2s connection
                         .setDebuggerEnabled(true)
+                        //.setSendPresence(false)
                         .build();
         //setXmppDomain(DomainBareJid xmppServiceDomain)
+
         connection = new XMPPTCPConnection(connConfig);
         //connection.setPacketReplyTimeout(1000);
         connection.addConnectionListener(XmppService.this);
         connection.connect();
-
     }
 
     @Override
@@ -218,7 +376,7 @@ public class XmppService extends Service implements ConnectionListener {
         Log.d("XmppAuth", "xmpp Type Main Authenticated() :" + connection.isAuthenticated());
 
         if (connection.isAuthenticated()) {
-            prefs.edit().putBoolean("isAuthed",true).apply();
+            prefs.edit().putBoolean("isAuthed", true).apply();
             ServerPingWithAlarmManager.getInstanceFor(connection).setEnabled(true);
 
             PingManager pingManager = PingManager.getInstanceFor(connection);
@@ -276,6 +434,7 @@ public class XmppService extends Service implements ConnectionListener {
         loggedin = false;
         try {
             connection.connect();
+
         } catch (SmackException | IOException | XMPPException ex) {
             ex.printStackTrace();
         }

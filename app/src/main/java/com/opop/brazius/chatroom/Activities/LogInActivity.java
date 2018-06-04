@@ -1,25 +1,30 @@
-package com.opop.brazius.chatroom;
+package com.opop.brazius.chatroom.Activities;
 
-import android.app.ActivityManager;
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.os.AsyncTask;
 import android.os.IBinder;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import com.opop.brazius.chatroom.ConnectionInterface;
+import com.opop.brazius.chatroom.Models.MessagesDBModel;
+import com.opop.brazius.chatroom.R;
+import com.opop.brazius.chatroom.XmppService;
+
 import org.jivesoftware.smack.AbstractXMPPConnection;
+import org.jivesoftware.smack.chat.Chat;
+import org.jivesoftware.smack.chat.ChatManager;
+import org.jivesoftware.smack.chat.ChatManagerListener;
+import org.jivesoftware.smack.chat.ChatMessageListener;
+import org.jivesoftware.smack.packet.Message;
 
 
 public class LogInActivity extends AppCompatActivity implements ConnectionInterface {
@@ -131,7 +136,6 @@ public class LogInActivity extends AppCompatActivity implements ConnectionInterf
 
     @Override
     public void onLoginException() {
-
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -153,6 +157,7 @@ public class LogInActivity extends AppCompatActivity implements ConnectionInterf
             }
         });
     }
+
     @Override
     public void onLoggedIn() {
         runOnUiThread(new Runnable() {
@@ -162,6 +167,11 @@ public class LogInActivity extends AppCompatActivity implements ConnectionInterf
                 startActivity(new Intent(LogInActivity.this, SelectChatActivity.class));
             }
         });
+
+    }
+
+    @Override
+    public void onRegisterException() {
 
     }
 }

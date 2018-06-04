@@ -11,20 +11,22 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <activity android:name=".ChatActivity" />
-        <activity android:name=".RegisterActivity">
+        <activity android:name=".Activities.ChatActivity" />
+        <activity android:name=".Activities.RegisterActivity">
+
+        </activity>
+        <activity android:name=".Activities.LogInActivity" />
+        <activity android:name=".Activities.SelectChatActivity" />
+
+        <service android:name=".XmppService" />
+
+        <activity android:name=".Activities.FirstActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".LogInActivity" />
-        <activity android:name=".SelectChatActivity" />
-
-        <service android:name=".XmppService" />
-
-        <activity android:name=".FirstActivity"></activity>
     </application>
 
 </manifest>

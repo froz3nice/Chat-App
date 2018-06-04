@@ -1,14 +1,10 @@
-package com.opop.brazius.chatroom;
+package com.opop.brazius.chatroom.Activities;
 
-import android.app.ActivityManager;
-import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.os.AsyncTask;
 import android.os.IBinder;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -19,6 +15,10 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.opop.brazius.chatroom.ConnectionInterface;
+import com.opop.brazius.chatroom.R;
+import com.opop.brazius.chatroom.XmppService;
 
 import org.jivesoftware.smack.AbstractXMPPConnection;
 
@@ -125,7 +125,7 @@ public class RegisterActivity extends AppCompatActivity implements ConnectionInt
         }
 
         if (username.isEmpty()) {
-            _usernameText.setError("please enter username");
+            _usernameText.setError("Please enter username");
             valid = false;
         } else {
             _usernameText.setError(null);
@@ -138,8 +138,8 @@ public class RegisterActivity extends AppCompatActivity implements ConnectionInt
             _emailText.setError(null);
         }
 
-        if (password.isEmpty() || password.length() < 4 || password.length() > 10) {
-            _passwordText.setError("between 4 and 10 alphanumeric characters");
+        if (password.isEmpty() ) {
+            _passwordText.setError("Please enter password");
             valid = false;
         } else {
             _passwordText.setError(null);
@@ -164,11 +164,12 @@ public class RegisterActivity extends AppCompatActivity implements ConnectionInt
 
     @Override
     public void onLoginException() {
-        progressBar.setVisibility(View.INVISIBLE);
-        _signupButton.setEnabled(true);
+
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                progressBar.setVisibility(View.INVISIBLE);
+                _signupButton.setEnabled(true);
                 Toast.makeText(xmppService, "Login failed", Toast.LENGTH_SHORT).show();
             }
         });
@@ -176,11 +177,12 @@ public class RegisterActivity extends AppCompatActivity implements ConnectionInt
 
     @Override
     public void onConnectionExcepion() {
-        progressBar.setVisibility(View.INVISIBLE);
-        _signupButton.setEnabled(true);
+
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                progressBar.setVisibility(View.INVISIBLE);
+                _signupButton.setEnabled(true);
                 Toast.makeText(xmppService, "Connection failed", Toast.LENGTH_SHORT).show();
             }
         });
@@ -193,6 +195,18 @@ public class RegisterActivity extends AppCompatActivity implements ConnectionInt
             public void run() {
                 finish();
                 startActivity(new Intent(RegisterActivity.this, SelectChatActivity.class));
+            }
+        });
+    }
+
+    @Override
+    public void onRegisterException() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                progressBar.setVisibility(View.INVISIBLE);
+                _signupButton.setEnabled(true);
+                Toast.makeText(xmppService, "Unable to register try different username", Toast.LENGTH_LONG).show();
             }
         });
     }
